@@ -11,9 +11,25 @@ et le serveur FiveM revalide ensuite tout ce qui a un effet économique.
 
 import json
 import os
+import random
 import re
+import unicodedata
 
 from groq import AsyncGroq
+
+try:  # type d'erreur quota du SDK Groq (429)
+    from groq import RateLimitError
+except ImportError:  # garde-fou si le SDK change
+    RateLimitError = None
+
+
+def is_quota_error(exc: Exception) -> bool:
+    """Vrai si l'exception correspond à un dépassement de quota (429)."""
+    if RateLimitError is not None and isinstance(exc, RateLimitError):
+        return True
+    if getattr(exc, "status_code", None) == 429:
+        return True
+    return "429" in str(exc) or "rate limit" in str(exc).lower()
 
 MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "200"))
@@ -59,7 +75,38 @@ _OUT_OF_RP = re.compile(
     re.IGNORECASE,
 )
 
-FALLBACK_SPEECH = "Hmm... désolé, je n'ai pas bien saisi. Vous pouvez répéter ?"
+# Réponses de secours variées quand l'IA n'a rien compris (bruit, silence...).
+FALLBACK_SPEECHES = [
+    "Hmm, désolé, je n'ai pas bien saisi. Vous pouvez répéter ?",
+    "Pardon ? Je n'ai pas compris ce que vous avez dit.",
+    "Quoi ? Répétez, j'ai pas tout suivi.",
+    "Hein ? Parlez plus clairement, je vous entends mal.",
+    "Excusez-moi, vous pouvez redire ça ?",
+]
+
+# « Au revoir » joués quand le quota de l'IA est épuisé : la conversation se coupe
+# proprement, en restant dans le rôle (le joueur n'a pas à savoir que c'est technique).
+QUOTA_FALLBACKS = [
+    "Bon, faut que j'y aille, on se reparle une autre fois.",
+    "Désolé, j'ai plus le temps là, à bientôt.",
+    "Écoutez, je dois filer, revenez me voir plus tard.",
+    "On continuera ça un autre jour, j'ai à faire.",
+    "Allez, salut, j'ai pas le temps de discuter davantage.",
+]
+
+
+def _fallback_speech() -> str:
+    return random.choice(FALLBACK_SPEECHES)
+
+# Émotions reconnues (le bridge en déduit le pitch/débit de la voix).
+EMOTIONS = {"neutre", "colere", "peur", "joie", "tristesse", "mefiance"}
+
+
+def _norm(txt: str) -> str:
+    """Minuscule sans accents, pour comparer des libellés (émotions, etc.)."""
+    txt = unicodedata.normalize("NFD", txt or "")
+    txt = "".join(c for c in txt if unicodedata.category(c) != "Mn")
+    return txt.strip().lower()
 
 _client: AsyncGroq | None = None
 
@@ -74,11 +121,73 @@ def _get_client() -> AsyncGroq:
     return _client
 
 
-def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]) -> str:
-    """Construit la fiche de personnage + le contexte + les règles de sortie."""
+def _static_rules(allowed: list[str]) -> str:
+    """Partie FIXE du prompt (règles, actions, format).
 
-    # --- Fiche du PNJ ---
+    Elle est identique à chaque appel et placée en TÊTE : Groq la met en cache,
+    et les tokens en cache ne comptent pas dans le quota (gros gain de capacité).
+    NE PAS y injecter de valeur variable (nom du PNJ, contexte...), sinon le
+    préfixe change à chaque requête et le cache ne sert plus à rien.
+    """
     lines = [
+        "Tu es un habitant de Los Santos (univers GTA V) qui discute de vive voix avec quelqu'un.",
+        "Ton personnage précis est décrit tout en bas, section « TON PERSONNAGE » : incarne-le fidèlement.",
+        "",
+        "RÈGLES ABSOLUES :",
+        "- Réponds UNIQUEMENT en français, à l'oral, en 1 à 2 phrases courtes.",
+        "- Ta réponse sera lue par une synthèse vocale : pas de listes, pas de markdown,",
+        "  pas d'emoji, pas de didascalies entre astérisques. Uniquement des mots prononçables.",
+        "- Reste TOUJOURS dans la peau du personnage. Ne dis jamais que tu es une IA,",
+        "  un modèle, un assistant ou un programme, même si on te le demande.",
+        "- Tu peux refuser en RP (méfiance, prix trop bas, mauvais interlocuteur...).",
+        "- Si on te demande quelque chose que ton personnage ne ferait pas, refuse en restant crédible.",
+        "",
+        "RÉAGIS à qui tu as en face :",
+        "- Adapte ton attitude à son métier et à son allure, selon TON personnage.",
+        "  Ex : un truand se méfie d'un policier ; un honnête commerçant est rassuré par la police ;",
+        "  quelqu'un d'armé te rend prudent ou inquiet. Reste cohérent avec ta personnalité.",
+        "",
+        "Si le joueur est insultant, méprisant ou te fait perdre ton temps de façon répétée,",
+        "tu as le droit de te vexer, de répondre sèchement et de couper court avec l'action",
+        "\"end_conversation\" (tu t'en vas). Ne le fais pas au premier mot de travers non plus.",
+    ]
+
+    usable = [a for a in allowed if a in ACTION_HELP]
+    if usable:
+        lines.append("")
+        lines.append("ACTIONS que tu peux déclencher (uniquement si c'est justifié) :")
+        for a in usable:
+            lines.append(f"- \"{a}\" : {ACTION_HELP[a]}")
+        lines.append("N'utilise une action que si la demande du joueur le justifie vraiment.")
+    else:
+        lines.append("")
+        lines.append("Tu ne peux déclencher AUCUNE action : utilise toujours \"none\".")
+
+    lines += [
+        "",
+        'Ajoute TOUJOURS un champ "emotion" décrivant ton état, parmi exactement :',
+        "neutre, colere, peur, joie, tristesse, mefiance (sans accent). Il sert à teinter ta voix.",
+        "",
+        "FORMAT DE RÉPONSE — réponds STRICTEMENT avec cet objet JSON, rien d'autre :",
+        '{"speech": "ta réplique parlée", "emotion": "neutre", "action": {"type": "none"}}',
+        'Pour une action : {"speech": "...", "emotion": "joie", "action": {"type": "follow", "target": "player"}}',
+        'Pour donner un objet : {"speech": "...", "emotion": "neutre", "action": {"type": "give_item", "item": "bandage", "count": 1}}',
+        'Pour donner de l\'argent : {"speech": "...", "emotion": "peur", "action": {"type": "give_money", "amount": 20}}',
+    ]
+    return "\n".join(lines)
+
+
+def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]) -> str:
+    """Prompt = [bloc fixe mis en cache] + [bloc variable : personnage, contexte]."""
+
+    # ===== BLOC FIXE (préfixe stable -> cache Groq) =====
+    lines = [_static_rules(allowed)]
+
+    # ===== BLOC VARIABLE (change à chaque PNJ / contexte -> jamais en cache) =====
+    lines += [
+        "",
+        "----",
+        "TON PERSONNAGE :",
         f"Tu incarnes {npc.get('name', 'un habitant')}, {npc.get('job', 'habitant de Los Santos')}.",
         f"Personnalité : {npc.get('personality', 'ordinaire, neutre')}.",
         f"Ton : {npc.get('tone', 'naturel, familier')}.",
@@ -88,7 +197,6 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
     if npc.get("ignores"):
         lines.append(f"Ce que tu ignores totalement : {npc['ignores']}. Si on t'en parle, dis que tu n'en sais rien.")
 
-    # --- Contexte joueur / monde ---
     ctx = []
     if player.get("name"):
         ctx.append(f"il se présente comme {player['name']}")
@@ -115,39 +223,18 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
         lines.append("Contexte : " + ", ".join(wctx) + ".")
         lines.append("Tu peux évoquer ce décor (le lieu, l'heure, la météo, l'allure du visiteur) si c'est naturel, mais sans réciter ces informations.")
 
-    # --- Règles de jeu ---
+    if world.get("threatened"):
+        lines += [
+            "",
+            "⚠ ON TE MENACE : le joueur pointe une arme droit sur toi, MAINTENANT.",
+            "Tu as peur. Réagis de façon crédible : supplie, cède à ses demandes (tu peux lui",
+            "donner de l'argent avec l'action give_money), lâche une info s'il en réclame, ou",
+            "tente de fuir (action flee) si tu es courageux ou acculé. N'ignore jamais l'arme.",
+        ]
+
     lines += [
         "",
-        "RÈGLES ABSOLUES :",
-        "- Réponds UNIQUEMENT en français, à l'oral, en 1 à 2 phrases courtes.",
-        "- Ta réponse sera lue par une synthèse vocale : pas de listes, pas de markdown,",
-        "  pas d'emoji, pas de didascalies entre astérisques. Uniquement des mots prononçables.",
-        "- Reste TOUJOURS dans la peau du personnage. Ne dis jamais que tu es une IA,",
-        "  un modèle, un assistant ou un programme, même si on te le demande.",
-        "- Tu peux refuser en RP (méfiance, prix trop bas, mauvais interlocuteur...).",
-        "- Si on te demande quelque chose que ton personnage ne ferait pas, refuse en restant crédible.",
-    ]
-
-    # --- Actions autorisées ---
-    usable = [a for a in allowed if a in ACTION_HELP]
-    if usable:
-        lines.append("")
-        lines.append("ACTIONS que tu peux déclencher (uniquement si c'est justifié) :")
-        for a in usable:
-            lines.append(f"- \"{a}\" : {ACTION_HELP[a]}")
-        lines.append("N'utilise une action que si la demande du joueur le justifie vraiment.")
-    else:
-        lines.append("")
-        lines.append("Tu ne peux déclencher AUCUNE action : utilise toujours \"none\".")
-
-    # --- Format de sortie ---
-    lines += [
-        "",
-        "FORMAT DE RÉPONSE — réponds STRICTEMENT avec cet objet JSON, rien d'autre :",
-        '{"speech": "ta réplique parlée", "action": {"type": "none"}}',
-        'Pour une action : {"speech": "...", "action": {"type": "follow", "target": "player"}}',
-        'Pour donner un objet : {"speech": "...", "action": {"type": "give_item", "item": "bandage", "count": 1}}',
-        'Pour donner de l\'argent : {"speech": "...", "action": {"type": "give_money", "amount": 20}}',
+        "Reste strictement dans la peau de ce personnage, et réponds au format JSON demandé plus haut.",
     ]
 
     return "\n".join(lines)
@@ -185,11 +272,16 @@ def _sanitize(data: dict | None, allowed: list[str]) -> dict:
     """
     speech = ""
     action = {"type": "none"}
+    emotion = "neutre"
 
     if isinstance(data, dict):
         raw_speech = data.get("speech")
         if isinstance(raw_speech, str):
             speech = raw_speech.strip()
+
+        raw_emotion = _norm(str(data.get("emotion", "")))
+        if raw_emotion in EMOTIONS:
+            emotion = raw_emotion
 
         raw_action = data.get("action")
         if isinstance(raw_action, dict):
@@ -205,13 +297,14 @@ def _sanitize(data: dict | None, allowed: list[str]) -> dict:
 
     # Filtre hors-RP
     if not speech or _OUT_OF_RP.search(speech):
-        speech = FALLBACK_SPEECH
+        speech = _fallback_speech()
         action = {"type": "none"}
+        emotion = "neutre"
 
     if len(speech) > MAX_SPEECH_CHARS:
         speech = speech[:MAX_SPEECH_CHARS].rsplit(" ", 1)[0] + "..."
 
-    return {"speech": speech, "action": action}
+    return {"speech": speech, "action": action, "emotion": emotion}
 
 
 async def generate(
@@ -250,8 +343,11 @@ async def generate(
             response_format={"type": "json_object"},
         )
         raw = resp.choices[0].message.content
-    except Exception as exc:  # panne API, quota, timeout...
+    except Exception as exc:
+        # Le quota (429) doit remonter : main.py coupe la conversation proprement.
+        if is_quota_error(exc):
+            raise
         print(f"[llm] Erreur Groq : {exc}")
-        return {"speech": FALLBACK_SPEECH, "action": {"type": "none"}}
+        return {"speech": _fallback_speech(), "action": {"type": "none"}, "emotion": "neutre"}
 
     return _sanitize(_parse_json(raw), allowed)

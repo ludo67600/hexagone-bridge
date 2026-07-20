@@ -13,6 +13,7 @@ Démarrage :
 
 import base64
 import os
+import random
 import time
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
@@ -38,6 +39,17 @@ RL_HOURLY_MAX = int(os.getenv("RL_HOURLY_MAX", "20"))        # 20 / heure / joue
 
 _last_call: dict[str, float] = {}
 _hourly: dict[str, deque] = defaultdict(deque)
+
+# Teinte de la voix selon l'émotion renvoyée par le LLM : (Δpitch Hz, Δrate %).
+# Les valeurs sont ajoutées au pitch/rate de la voix puis bornées par tts.py.
+MOOD_VOICE = {
+    "neutre":    (0, 0),
+    "colere":    (4, 9),
+    "peur":      (7, 12),
+    "joie":      (3, 5),
+    "tristesse": (-4, -8),
+    "mefiance":  (-1, -3),
+}
 
 
 @asynccontextmanager
@@ -96,6 +108,7 @@ class WorldModel(BaseModel):
     time: str = ""
     weather: str = ""
     location: str = ""            # rue / quartier où se déroule la scène
+    threatened: bool = False      # le joueur pointe une arme sur le PNJ
 
 
 class VoiceModel(BaseModel):
@@ -145,6 +158,30 @@ def _check_rate_limit(player_id: str) -> None:
     window.append(now)
 
 
+async def _quota_reply(req: "TalkRequest", t0: float) -> dict:
+    """Quota Groq épuisé : le PNJ dit poliment au revoir (edge-tts est gratuit)
+    et l'action end_conversation coupe la session côté FiveM."""
+    speech = random.choice(llm.QUOTA_FALLBACKS)
+    audio = b""
+    try:
+        audio = await tts.synthesize(
+            speech, voice=req.voice.name, pitch=req.voice.pitch, rate=req.voice.rate
+        ) or b""
+    except Exception as exc:
+        print(f"[bridge] TTS (réponse quota) échec : {exc}")
+    print("[bridge] ⚠ Quota Groq atteint : conversation coupée proprement.")
+    return {
+        "ok": True,
+        "quota": True,
+        "transcription": "",
+        "speech": speech,
+        "emotion": "neutre",
+        "action": {"type": "end_conversation"},
+        "audio_b64": base64.b64encode(audio).decode("ascii") if audio else "",
+        "timings": {"total": round(time.perf_counter() - t0, 3)},
+    }
+
+
 # --------------------------------------------------------------------------
 # Endpoints
 # --------------------------------------------------------------------------
@@ -186,6 +223,8 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
         try:
             transcription = await stt.transcribe(audio_in)
         except Exception as exc:
+            if llm.is_quota_error(exc):
+                return await _quota_reply(req, t0)
             print(f"[bridge] STT échec : {exc}")
             raise HTTPException(status_code=502, detail="Transcription indisponible")
         timings["stt"] = round(time.perf_counter() - t, 3)
@@ -212,33 +251,46 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
 
     if cached_llm:
         speech, action = cached_llm["speech"], cached_llm["action"]
+        emotion = "neutre"   # non mis en cache : voix neutre sur les réponses réutilisées
         timings["llm"] = 0.0
         llm_cached = True
     else:
         t = time.perf_counter()
-        result = await llm.generate(
-            npc=req.npc.model_dump(),
-            player=req.player.model_dump(),
-            world=req.world.model_dump(),
-            history=req.history,
-            user_text=transcription,
-            allowed=allowed,
-        )
+        try:
+            result = await llm.generate(
+                npc=req.npc.model_dump(),
+                player=req.player.model_dump(),
+                world=req.world.model_dump(),
+                history=req.history,
+                user_text=transcription,
+                allowed=allowed,
+            )
+        except Exception as exc:
+            if llm.is_quota_error(exc):
+                return await _quota_reply(req, t0)
+            print(f"[bridge] LLM échec : {exc}")
+            raise HTTPException(status_code=502, detail="IA indisponible")
         timings["llm"] = round(time.perf_counter() - t, 3)
         speech, action = result["speech"], result["action"]
+        emotion = result.get("emotion", "neutre")
         llm_cached = False
         if not req.history:
             await cache.set_llm(llm_key, speech, action)
 
     # ---------------- 3. TTS (avec cache) ----------------
-    tts_key = cache.make_key("tts", speech, req.voice.name, req.voice.pitch, req.voice.rate)
+    # L'émotion teinte la voix (pitch/débit) ; tts.py borne ensuite les valeurs.
+    d_pitch, d_rate = MOOD_VOICE.get(emotion, (0, 0))
+    voice_pitch = req.voice.pitch + d_pitch
+    voice_rate = req.voice.rate + d_rate
+
+    tts_key = cache.make_key("tts", speech, req.voice.name, voice_pitch, voice_rate)
     audio_out = await cache.get_tts(tts_key)
     tts_cached = audio_out is not None
 
     if not tts_cached:
         t = time.perf_counter()
         audio_out = await tts.synthesize(
-            speech, voice=req.voice.name, pitch=req.voice.pitch, rate=req.voice.rate
+            speech, voice=req.voice.name, pitch=voice_pitch, rate=voice_rate
         )
         timings["tts"] = round(time.perf_counter() - t, 3)
         if audio_out:
@@ -252,6 +304,7 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
         "ok": True,
         "transcription": transcription,
         "speech": speech,
+        "emotion": emotion,
         "action": action,
         "audio_b64": base64.b64encode(audio_out).decode("ascii") if audio_out else "",
         "cached": {"llm": llm_cached, "tts": tts_cached},
