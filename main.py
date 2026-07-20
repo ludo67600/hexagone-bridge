@@ -87,6 +87,7 @@ class PlayerModel(BaseModel):
     grade: str = ""
     money: int | None = None
     items: list[str] = Field(default_factory=list)
+    appearance: str = ""          # apparence perçue par le PNJ (genre, arme, masque...)
 
     _fix_items = field_validator("items", mode="before")(_empty_dict_as_list)
 
@@ -94,6 +95,7 @@ class PlayerModel(BaseModel):
 class WorldModel(BaseModel):
     time: str = ""
     weather: str = ""
+    location: str = ""            # rue / quartier où se déroule la scène
 
 
 class VoiceModel(BaseModel):
