@@ -18,7 +18,7 @@ from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import cache
 import llm
@@ -56,6 +56,17 @@ app = FastAPI(title="Hexagone AI NPC Bridge", version="1.0.0", lifespan=lifespan
 # Modèles de requête
 # --------------------------------------------------------------------------
 
+def _empty_dict_as_list(v):
+    """Lua ne distingue pas table vide et objet vide : json.encode({}) donne "{}".
+
+    Sans cette tolérance, toute liste vide envoyée par FiveM (history au premier
+    message, items d'un joueur sans inventaire) déclenche une erreur 422.
+    """
+    if isinstance(v, dict) and not v:
+        return []
+    return v
+
+
 class NpcModel(BaseModel):
     id: str = "npc"
     name: str = "Habitant"
@@ -66,6 +77,8 @@ class NpcModel(BaseModel):
     tone: str = ""
     allowed_actions: list[str] = Field(default_factory=list)
 
+    _fix_actions = field_validator("allowed_actions", mode="before")(_empty_dict_as_list)
+
 
 class PlayerModel(BaseModel):
     id: str = "0"                 # identifiant serveur, sert au rate-limit
@@ -74,6 +87,8 @@ class PlayerModel(BaseModel):
     grade: str = ""
     money: int | None = None
     items: list[str] = Field(default_factory=list)
+
+    _fix_items = field_validator("items", mode="before")(_empty_dict_as_list)
 
 
 class WorldModel(BaseModel):
@@ -95,6 +110,8 @@ class TalkRequest(BaseModel):
     world: WorldModel = Field(default_factory=WorldModel)
     voice: VoiceModel = Field(default_factory=VoiceModel)
     history: list[dict] = Field(default_factory=list)
+
+    _fix_history = field_validator("history", mode="before")(_empty_dict_as_list)
 
 
 # --------------------------------------------------------------------------
