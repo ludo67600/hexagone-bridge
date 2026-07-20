@@ -50,6 +50,13 @@ ACTION_TYPES = {
     "give_money",
     "open_shop",
     "hands_up",
+    "dance",
+    "sit",
+    "kneel",
+    "smoke",
+    "drink",
+    "fight",
+    "call_police",
     "end_conversation",
 }
 
@@ -62,8 +69,16 @@ ACTION_HELP = {
     "flee": "fuir (si tu as peur ou qu'on te menace)",
     "give_item": "remettre un objet au joueur",
     "give_money": "donner quelques billets au joueur (précise le champ \"amount\", petit montant)",
+    "give_item": "remettre un petit objet au joueur (précise \"item\" et \"count\")",
     "open_shop": "ouvrir ton commerce / ton menu de vente",
     "hands_up": "lever les mains (si on te braque)",
+    "dance": "te mettre à danser (si l'ambiance s'y prête, on te le demande)",
+    "sit": "t'asseoir par terre (si on te le demande ou pour te poser)",
+    "kneel": "te mettre à genoux (soumission, si on te menace fortement)",
+    "smoke": "allumer une cigarette (moment détente)",
+    "drink": "boire un coup (moment détente)",
+    "fight": "RARE : te défendre et frapper le joueur, UNIQUEMENT s'il te provoque, t'agresse ou t'insulte lourdement et que ton personnage est du genre à réagir",
+    "call_police": "RARE : appeler la police, UNIQUEMENT si tu es sérieusement menacé (arme braquée, agression) et que ton personnage oserait le faire",
     "end_conversation": "mettre fin à la conversation (au revoir, tu t'en vas)",
 }
 
