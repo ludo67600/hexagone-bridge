@@ -31,6 +31,7 @@ ACTION_TYPES = {
     "enter_vehicle",
     "flee",
     "give_item",
+    "give_money",
     "open_shop",
     "hands_up",
     "end_conversation",
@@ -44,6 +45,7 @@ ACTION_HELP = {
     "enter_vehicle": "monter dans le véhicule du joueur",
     "flee": "fuir (si tu as peur ou qu'on te menace)",
     "give_item": "remettre un objet au joueur",
+    "give_money": "donner quelques billets au joueur (précise le champ \"amount\", petit montant)",
     "open_shop": "ouvrir ton commerce / ton menu de vente",
     "hands_up": "lever les mains (si on te braque)",
     "end_conversation": "mettre fin à la conversation (au revoir, tu t'en vas)",
@@ -97,6 +99,8 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
         ctx.append(f"argent visible : {player['money']}$")
     if player.get("items"):
         ctx.append("objets visibles : " + ", ".join(map(str, player["items"])))
+    if player.get("appearance"):
+        ctx.append(f"tu la vois ainsi : {player['appearance']}")
     if ctx:
         lines.append("La personne en face de toi : " + " ; ".join(ctx) + ".")
 
@@ -105,8 +109,11 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
         wctx.append(f"il est {world['time']}")
     if world.get("weather"):
         wctx.append(f"météo : {world['weather']}")
+    if world.get("location"):
+        wctx.append(f"vous vous trouvez à {world['location']}")
     if wctx:
         lines.append("Contexte : " + ", ".join(wctx) + ".")
+        lines.append("Tu peux évoquer ce décor (le lieu, l'heure, la météo, l'allure du visiteur) si c'est naturel, mais sans réciter ces informations.")
 
     # --- Règles de jeu ---
     lines += [
@@ -140,6 +147,7 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
         '{"speech": "ta réplique parlée", "action": {"type": "none"}}',
         'Pour une action : {"speech": "...", "action": {"type": "follow", "target": "player"}}',
         'Pour donner un objet : {"speech": "...", "action": {"type": "give_item", "item": "bandage", "count": 1}}',
+        'Pour donner de l\'argent : {"speech": "...", "action": {"type": "give_money", "amount": 20}}',
     ]
 
     return "\n".join(lines)
