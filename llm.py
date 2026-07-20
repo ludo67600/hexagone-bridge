@@ -158,7 +158,14 @@ def _static_rules(allowed: list[str]) -> str:
         lines.append("ACTIONS que tu peux déclencher (uniquement si c'est justifié) :")
         for a in usable:
             lines.append(f"- \"{a}\" : {ACTION_HELP[a]}")
-        lines.append("N'utilise une action que si la demande du joueur le justifie vraiment.")
+        lines += [
+            "N'utilise une action que si la demande du joueur le justifie vraiment.",
+            "IMPORTANT : une action ne se produit QUE si tu remplis le champ \"action\".",
+            "Le dire seulement dans \"speech\" ne fait RIEN. Si tu acceptes de donner de",
+            "l'argent, de suivre, de fuir, etc., tu DOIS mettre l'action correspondante.",
+            "Exemple : si tu acceptes de dépanner le joueur, ta réponse contient",
+            '"action": {"type": "give_money", "amount": 20} — pas seulement des mots.',
+        ]
     else:
         lines.append("")
         lines.append("Tu ne peux déclencher AUCUNE action : utilise toujours \"none\".")
