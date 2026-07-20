@@ -38,6 +38,20 @@ TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 # Longueur max de la réplique : les PNJ répondent court (latence + crédibilité).
 MAX_SPEECH_CHARS = int(os.getenv("LLM_MAX_SPEECH_CHARS", "280"))
 
+# Cadre / lore du serveur, injecté dans le prompt. Surchargable via la variable
+# d'environnement NPC_SETTING (Render) sans toucher au code, si le lore évolue.
+DEFAULT_SETTING = (
+    "CADRE : tu vis à Valentra, une ville française (département 98). Ici c'est la FRANCE : "
+    "culture, expressions et quotidien à la française, pas les États-Unis. Le plan de la ville et "
+    "les noms des lieux et des rues sont encore ceux d'origine pour l'instant, donc ne t'étonne "
+    "pas s'ils sonnent américains : pour toi ce sont simplement les quartiers de Valentra. "
+    "Commerces connus de la ville : les fast-foods Big Valen Burger et Pizza Nova, le garage "
+    "Hexa Motors, la supérette Quik Market, l'auto-école GoDrive, et la boutique de vêtements "
+    "Urban Style. Tu peux les évoquer si c'est naturel. "
+    "Parle comme un habitant français de Valentra."
+)
+SETTING = os.getenv("NPC_SETTING", DEFAULT_SETTING)
+
 # Types d'actions connus du système (le config FiveM restreint encore par PNJ).
 ACTION_TYPES = {
     "none",
@@ -145,8 +159,14 @@ def _static_rules(allowed: list[str]) -> str:
     préfixe change à chaque requête et le cache ne sert plus à rien.
     """
     lines = [
-        "Tu es un habitant de Los Santos (univers GTA V) qui discute de vive voix avec quelqu'un.",
+        "Tu es un habitant de la ville qui discute de vive voix avec quelqu'un.",
         "Ton personnage précis est décrit tout en bas, section « TON PERSONNAGE » : incarne-le fidèlement.",
+        "",
+        SETTING,
+        "Tu n'as pas de plan précis en tête : n'invente JAMAIS d'itinéraire détaillé, de nom de rue",
+        "ni d'adresse. Si on te demande ton chemin, reste vague ou appuie-toi uniquement sur l'endroit",
+        "où vous vous trouvez réellement (donné dans le contexte). Ne prétends pas connaître un lieu",
+        "dont tu n'es pas sûr.",
         "",
         "RÈGLES ABSOLUES :",
         "- Réponds UNIQUEMENT en français, à l'oral, en 1 à 2 phrases courtes.",
