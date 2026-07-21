@@ -34,12 +34,18 @@ _RATE_LIMIT_ERRORS = tuple(_RATE_LIMIT_ERRORS)
 
 
 def is_quota_error(exc: Exception) -> bool:
-    """Vrai si l'exception correspond à un dépassement de quota (429)."""
+    """Vrai si l'exception est un dépassement de débit ou de quota (429).
+
+    On évite volontairement de chercher « 429 » n'importe où dans le message :
+    ce nombre peut apparaître dans un identifiant de requête ou un compteur de
+    tokens, et provoquerait une fausse coupure de conversation.
+    """
     if _RATE_LIMIT_ERRORS and isinstance(exc, _RATE_LIMIT_ERRORS):
         return True
     if getattr(exc, "status_code", None) == 429:
         return True
-    return "429" in str(exc) or "rate limit" in str(exc).lower()
+    msg = str(exc).lower()
+    return "rate limit" in msg or "too many requests" in msg or "quota" in msg
 
 # --------------------------------------------------------------------------
 # Fournisseur du LLM — interchangeable sans toucher au code.

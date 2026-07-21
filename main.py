@@ -159,18 +159,22 @@ def _check_rate_limit(player_id: str) -> None:
     window.append(now)
 
 
-async def _quota_reply(req: "TalkRequest", t0: float) -> dict:
-    """Quota Groq épuisé : le PNJ dit poliment au revoir (edge-tts est gratuit)
-    et l'action end_conversation coupe la session côté FiveM."""
+async def _quota_reply(req: "TalkRequest", t0: float, origin: str = "?", exc: Exception | None = None) -> dict:
+    """Limite de débit ou quota atteint : le PNJ dit poliment au revoir
+    (edge-tts est gratuit) et l'action end_conversation coupe la session.
+
+    `origin` et `exc` sont journalisés : sans eux, impossible de distinguer un
+    quota journalier épuisé d'une simple limite par minute.
+    """
+    print(f"[bridge] ⚠ Limite atteinte sur {origin} : {exc}")
     speech = random.choice(llm.QUOTA_FALLBACKS)
     audio = b""
     try:
         audio = await tts.synthesize(
             speech, voice=req.voice.name, pitch=req.voice.pitch, rate=req.voice.rate
         ) or b""
-    except Exception as exc:
-        print(f"[bridge] TTS (réponse quota) échec : {exc}")
-    print("[bridge] ⚠ Quota Groq atteint : conversation coupée proprement.")
+    except Exception as tts_exc:      # nom distinct : ne pas masquer `exc`
+        print(f"[bridge] TTS (réponse quota) échec : {tts_exc}")
     return {
         "ok": True,
         "quota": True,
@@ -225,7 +229,7 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
             transcription = await stt.transcribe(audio_in)
         except Exception as exc:
             if llm.is_quota_error(exc):
-                return await _quota_reply(req, t0)
+                return await _quota_reply(req, t0, "Whisper (STT)", exc)
             print(f"[bridge] STT échec : {exc}")
             raise HTTPException(status_code=502, detail="Transcription indisponible")
         timings["stt"] = round(time.perf_counter() - t, 3)
@@ -268,7 +272,7 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
             )
         except Exception as exc:
             if llm.is_quota_error(exc):
-                return await _quota_reply(req, t0)
+                return await _quota_reply(req, t0, "LLM (" + llm.LLM_BASE_URL + ")", exc)
             print(f"[bridge] LLM échec : {exc}")
             raise HTTPException(status_code=502, detail="IA indisponible")
         timings["llm"] = round(time.perf_counter() - t, 3)
