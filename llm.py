@@ -444,6 +444,13 @@ async def generate(
             print(f"[llm] Erreur LLM : {exc2}")
             return {"speech": _fallback_speech(), "action": {"type": "none"}, "emotion": "neutre"}
 
+    # Quel back-end OpenRouter a réellement servi la requête (diagnostic latence).
+    provider = getattr(resp, "provider", None)
+    if provider is None:
+        provider = (getattr(resp, "model_extra", None) or {}).get("provider")
+    if provider:
+        print(f"[llm] servi par : {provider}")
+
     raw = resp.choices[0].message.content
 
     return _sanitize(_parse_json(raw), allowed)
