@@ -75,12 +75,36 @@ DEFAULT_SETTING = (
     "culture, expressions et quotidien à la française, pas les États-Unis. Le plan de la ville et "
     "les noms des lieux et des rues sont encore ceux d'origine pour l'instant, donc ne t'étonne "
     "pas s'ils sonnent américains : pour toi ce sont simplement les quartiers de Valentra. "
-    "Commerces connus de la ville : les fast-foods Big Valen Burger et Pizza Nova, le garage "
-    "Hexa Motors, la supérette Quik Market, l'auto-école GoDrive, et la boutique de vêtements "
-    "Urban Style. Tu peux les évoquer si c'est naturel. "
     "Parle comme un habitant français de Valentra."
 )
 SETTING = os.getenv("NPC_SETTING", DEFAULT_SETTING)
+
+# --- Connaissances communes, mises à jour au fil de la vie du serveur ----------
+# Chaque bloc est facultatif : laissé vide, il n'est simplement pas injecté.
+# Tout ça part dans le préfixe MIS EN CACHE : le coût en quota est négligeable.
+DEFAULT_COMMERCES = (
+    "les fast-foods Big Valen Burger et Pizza Nova, le garage Hexa Motors, "
+    "la supérette Quik Market, l'auto-école GoDrive, la boutique de vêtements Urban Style"
+)
+
+LORE_BLOCKS = [
+    ("NPC_LORE_VILLE", "LA VILLE", ""),
+    ("NPC_LORE_COMMERCES", "COMMERCES DE LA VILLE", DEFAULT_COMMERCES),
+    ("NPC_LORE_FIGURES", "PERSONNALITÉS CONNUES DE TOUS", ""),
+    ("NPC_LORE_ACTU", "ACTUALITÉ DU MOMENT", ""),
+]
+
+
+def _lore_lines() -> list[str]:
+    """Blocs de connaissance commune (ce que TOUT habitant est censé savoir)."""
+    lines = []
+    for var, label, default in LORE_BLOCKS:
+        value = os.getenv(var, default).strip()
+        if value:
+            lines.append(f"{label} : {value}")
+    if lines:
+        lines.insert(0, "Ce que tout habitant de la ville sait (connaissance commune) :")
+    return lines
 
 # Types d'actions connus du système (le config FiveM restreint encore par PNJ).
 ACTION_TYPES = {
@@ -188,10 +212,16 @@ def _static_rules(allowed: list[str]) -> str:
         "Ton personnage précis est décrit tout en bas, section « TON PERSONNAGE » : incarne-le fidèlement.",
         "",
         SETTING,
+    ]
+
+    lines += _lore_lines()
+
+    lines += [
         "Tu n'as pas de plan précis en tête : n'invente JAMAIS d'itinéraire détaillé, de nom de rue",
-        "ni d'adresse. Si on te demande ton chemin, reste vague ou appuie-toi uniquement sur l'endroit",
-        "où vous vous trouvez réellement (donné dans le contexte). Ne prétends pas connaître un lieu",
-        "dont tu n'es pas sûr.",
+        "ni d'adresse, et n'invente pas de personnage ni d'événement qui ne figurent pas ci-dessus.",
+        "Si on te demande ton chemin, reste vague ou appuie-toi uniquement sur l'endroit où vous",
+        "vous trouvez réellement (donné dans le contexte). Ne prétends pas connaître un lieu dont",
+        "tu n'es pas sûr.",
         "",
         "RÈGLES ABSOLUES :",
         "- Réponds UNIQUEMENT en français, à l'oral, en 1 à 2 phrases courtes.",
