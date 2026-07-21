@@ -15,21 +15,43 @@ import random
 import re
 import unicodedata
 
-from groq import AsyncGroq
+from openai import AsyncOpenAI
 
-try:  # type d'erreur quota du SDK Groq (429)
-    from groq import RateLimitError
-except ImportError:  # garde-fou si le SDK change
-    RateLimitError = None
+# Types d'erreur "quota dépassé" (429) des SDK utilisés : le LLM passe par le
+# client OpenAI (compatible Groq / OpenRouter / Mistral), la transcription par Groq.
+_RATE_LIMIT_ERRORS = []
+try:
+    from openai import RateLimitError as _OpenAIRateLimit
+    _RATE_LIMIT_ERRORS.append(_OpenAIRateLimit)
+except ImportError:
+    pass
+try:
+    from groq import RateLimitError as _GroqRateLimit
+    _RATE_LIMIT_ERRORS.append(_GroqRateLimit)
+except ImportError:
+    pass
+_RATE_LIMIT_ERRORS = tuple(_RATE_LIMIT_ERRORS)
 
 
 def is_quota_error(exc: Exception) -> bool:
     """Vrai si l'exception correspond à un dépassement de quota (429)."""
-    if RateLimitError is not None and isinstance(exc, RateLimitError):
+    if _RATE_LIMIT_ERRORS and isinstance(exc, _RATE_LIMIT_ERRORS):
         return True
     if getattr(exc, "status_code", None) == 429:
         return True
     return "429" in str(exc) or "rate limit" in str(exc).lower()
+
+# --------------------------------------------------------------------------
+# Fournisseur du LLM — interchangeable sans toucher au code.
+# Tous ces services exposent une API compatible OpenAI :
+#   Groq       : https://api.groq.com/openai/v1      (défaut, gratuit mais plafonné)
+#   OpenRouter : https://openrouter.ai/api/v1        (crédits prépayés, blocage net)
+#   Mistral    : https://api.mistral.ai/v1
+# Il suffit de définir LLM_BASE_URL + LLM_API_KEY + LLM_MODEL côté hébergeur.
+# --------------------------------------------------------------------------
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+# À défaut de clé dédiée, on retombe sur celle de Groq (comportement historique).
+LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY", "")
 
 MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "200"))
@@ -137,16 +159,15 @@ def _norm(txt: str) -> str:
     txt = "".join(c for c in txt if unicodedata.category(c) != "Mn")
     return txt.strip().lower()
 
-_client: AsyncGroq | None = None
+_client: AsyncOpenAI | None = None
 
 
-def _get_client() -> AsyncGroq:
+def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        key = os.getenv("GROQ_API_KEY")
-        if not key:
-            raise RuntimeError("GROQ_API_KEY manquante (variable d'environnement)")
-        _client = AsyncGroq(api_key=key)
+        if not LLM_API_KEY:
+            raise RuntimeError("Clé du LLM manquante (LLM_API_KEY ou GROQ_API_KEY)")
+        _client = AsyncOpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
     return _client
 
 

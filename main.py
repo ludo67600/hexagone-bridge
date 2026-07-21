@@ -56,6 +56,7 @@ MOOD_VOICE = {
 async def lifespan(_app: FastAPI):
     await cache.init()
     print("[bridge] Cache prêt —", cache.stats_sync())
+    print(f"[bridge] LLM : {llm.MODEL} via {llm.LLM_BASE_URL}")
     if not BRIDGE_TOKEN:
         print("[bridge] ⚠ BRIDGE_TOKEN vide : l'authentification est DÉSACTIVÉE (dev uniquement)")
     yield
