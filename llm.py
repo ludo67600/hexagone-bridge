@@ -53,6 +53,14 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1")
 # À défaut de clé dédiée, on retombe sur celle de Groq (comportement historique).
 LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY", "")
 
+# --- Routage OpenRouter (latence) ---------------------------------------
+# OpenRouter distribue le même modèle entre plusieurs back-ends de vitesses très
+# différentes. On lui demande les plus rapides, sinon les réponses traînent.
+#   LLM_PROVIDER_ORDER : back-ends préférés, ex. "Groq,Cerebras" (repli auto si indispo)
+#   LLM_PROVIDER_SORT  : "throughput" (débit), "latency" ou "price"
+LLM_PROVIDER_ORDER = [p.strip() for p in os.getenv("LLM_PROVIDER_ORDER", "").split(",") if p.strip()]
+LLM_PROVIDER_SORT = os.getenv("LLM_PROVIDER_SORT", "throughput")
+
 MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "200"))
 TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
@@ -409,6 +417,16 @@ async def generate(
         # vers des back-ends variés) : on sait s'en passer, _parse_json est tolérant.
         if json_mode:
             kwargs["response_format"] = {"type": "json_object"}
+
+        # Préférence de back-end (OpenRouter uniquement) : vise les plus rapides.
+        if "openrouter" in LLM_BASE_URL:
+            provider = {"allow_fallbacks": True}
+            if LLM_PROVIDER_ORDER:
+                provider["order"] = LLM_PROVIDER_ORDER
+            if LLM_PROVIDER_SORT:
+                provider["sort"] = LLM_PROVIDER_SORT
+            kwargs["extra_body"] = {"provider": provider}
+
         return await client.chat.completions.create(**kwargs)
 
     try:

@@ -300,6 +300,7 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
         timings["tts"] = 0.0
 
     timings["total"] = round(time.perf_counter() - t0, 3)
+    print("[bridge] temps : " + " ".join(f"{k}={v}s" for k, v in timings.items()))
 
     return {
         "ok": True,
