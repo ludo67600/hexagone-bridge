@@ -398,20 +398,34 @@ async def generate(
 
     messages.append({"role": "user", "content": user_text})
 
+    async def _complete(json_mode: bool):
+        kwargs = {
+            "model": MODEL,
+            "messages": messages,
+            "max_tokens": MAX_TOKENS,
+            "temperature": TEMPERATURE,
+        }
+        # Tous les fournisseurs ne gèrent pas le mode JSON strict (OpenRouter route
+        # vers des back-ends variés) : on sait s'en passer, _parse_json est tolérant.
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
+        return await client.chat.completions.create(**kwargs)
+
     try:
-        resp = await client.chat.completions.create(
-            model=MODEL,
-            messages=messages,
-            max_tokens=MAX_TOKENS,
-            temperature=TEMPERATURE,
-            response_format={"type": "json_object"},
-        )
-        raw = resp.choices[0].message.content
+        resp = await _complete(True)
     except Exception as exc:
         # Le quota (429) doit remonter : main.py coupe la conversation proprement.
         if is_quota_error(exc):
             raise
-        print(f"[llm] Erreur Groq : {exc}")
-        return {"speech": _fallback_speech(), "action": {"type": "none"}, "emotion": "neutre"}
+        print(f"[llm] Mode JSON refusé ({exc}) — nouvel essai sans response_format")
+        try:
+            resp = await _complete(False)
+        except Exception as exc2:
+            if is_quota_error(exc2):
+                raise
+            print(f"[llm] Erreur LLM : {exc2}")
+            return {"speech": _fallback_speech(), "action": {"type": "none"}, "emotion": "neutre"}
+
+    raw = resp.choices[0].message.content
 
     return _sanitize(_parse_json(raw), allowed)
