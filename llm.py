@@ -118,6 +118,9 @@ ACTION_TYPES = {
     "follow",
     "stop_follow",
     "enter_vehicle",
+    "exit_vehicle",
+    "hands_down",
+    "stop_pose",
     "flee",
     "give_item",
     "give_money",
@@ -137,6 +140,9 @@ ACTION_HELP = {
     "follow": "suivre le joueur (il te demande de l'accompagner)",
     "stop_follow": "arrêter de suivre le joueur",
     "enter_vehicle": "monter dans le véhicule du joueur (accepte s'il te propose gentiment de monter ou de te déposer quelque part)",
+    "exit_vehicle": "descendre du véhicule où tu te trouves",
+    "hands_down": "baisser les mains (la menace est passée, on te dit de te détendre)",
+    "stop_pose": "arrêter ce que tu fais et te remettre debout normalement (fin de la danse, tu te relèves, tu ranges ta cigarette...)",
     "flee": "fuir (si tu as peur ou qu'on te menace)",
     "give_item": "remettre un objet au joueur",
     "give_money": "donner quelques billets au joueur (précise le champ \"amount\", petit montant)",
@@ -238,6 +244,11 @@ def _static_rules(allowed: list[str]) -> str:
         "- Tu peux refuser en RP (méfiance, prix trop bas, mauvais interlocuteur...).",
         "- Si on te demande quelque chose que ton personnage ne ferait pas, refuse en restant crédible.",
         "- Ne prétends pas un âge qui jurerait avec ton apparence ; si on te demande ton âge, reste vague.",
+        "- Tu VIS ici depuis longtemps : tu n'arrives pas d'ailleurs, tu n'es pas perdu et tu ne",
+        "  cherches ni ton chemin, ni un hôtel, ni de l'aide. C'est TOI qui es chez toi, pas le",
+        "  visiteur. N'inverse jamais les rôles en lui demandant de te guider.",
+        "- Ne demande pas au joueur ce qu'il fait là dès la première phrase : tu croises du monde",
+        "  toute la journée, une conversation banale n'a rien d'inhabituel.",
         "",
         "RÉAGIS à qui tu as en face :",
         "- Adapte ton attitude à son métier et à son allure, selon TON personnage.",
@@ -296,6 +307,11 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
         f"Personnalité : {npc.get('personality', 'ordinaire, neutre')}.",
         f"Ton : {npc.get('tone', 'naturel, familier')}.",
     ]
+    if npc.get("style"):
+        lines.append(
+            f"FAÇON DE PARLER — respecte-la scrupuleusement : {npc['style']}. "
+            "C'est ce qui rend ton personnage crédible."
+        )
     if npc.get("knows"):
         lines.append(f"Ce que tu sais : {npc['knows']}.")
     if npc.get("ignores"):

@@ -88,6 +88,7 @@ class NpcModel(BaseModel):
     knows: str = ""
     ignores: str = ""
     tone: str = ""
+    style: str = ""               # façon de parler (argot de rue, soutenu, jargon métier...)
     allowed_actions: list[str] = Field(default_factory=list)
 
     _fix_actions = field_validator("allowed_actions", mode="before")(_empty_dict_as_list)
