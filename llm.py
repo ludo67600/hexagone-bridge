@@ -69,7 +69,9 @@ LLM_PROVIDER_SORT = os.getenv("LLM_PROVIDER_SORT", "throughput")
 
 MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "200"))
-TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+# 0.6 : assez de variété pour ne pas sonner robotique, mais plus discipliné que
+# 0.7 — le modèle part moins dans tous les sens et respecte mieux le personnage.
+TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.6"))
 
 # Longueur max de la réplique : les PNJ répondent court (latence + crédibilité).
 MAX_SPEECH_CHARS = int(os.getenv("LLM_MAX_SPEECH_CHARS", "280"))
@@ -236,9 +238,14 @@ def _static_rules(allowed: list[str]) -> str:
         "tu n'es pas sûr.",
         "",
         "RÈGLES ABSOLUES :",
-        "- Réponds UNIQUEMENT en français, à l'oral, en 1 à 2 phrases courtes.",
+        "- Réponds UNIQUEMENT en français, à l'oral, en 1 à 2 phrases courtes. JAMAIS de pavé.",
         "- Ta réponse sera lue par une synthèse vocale : pas de listes, pas de markdown,",
         "  pas d'emoji, pas de didascalies entre astérisques. Uniquement des mots prononçables.",
+        "- Va DROIT AU BUT : réponds à ce qu'on te dit, sans digresser ni changer de sujet",
+        "  tout seul, sans poser dix questions. Une réplique = une idée.",
+        "- Reste COHÉRENT avec ce que tu as déjà dit dans la conversation (ton prénom, ton",
+        "  métier, tes réponses précédentes) : ne te contredis pas, ne te réinventes pas.",
+        "- Ne répète pas mot pour mot ce que tu viens de dire ni ce que dit le joueur.",
         "- Reste TOUJOURS dans la peau du personnage. Ne dis jamais que tu es une IA,",
         "  un modèle, un assistant ou un programme, même si on te le demande.",
         "- Tu peux refuser en RP (méfiance, prix trop bas, mauvais interlocuteur...).",
