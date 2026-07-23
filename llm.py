@@ -68,7 +68,14 @@ LLM_PROVIDER_ORDER = [p.strip() for p in os.getenv("LLM_PROVIDER_ORDER", "").spl
 LLM_PROVIDER_SORT = os.getenv("LLM_PROVIDER_SORT", "throughput")
 
 MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
-MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "200"))
+# 400 : large pour une réplique de 1-2 phrases + le JSON. Un modèle non bavard
+# n'en consomme qu'une fraction (pas de surcoût), mais ça évite qu'une réponse
+# un peu longue soit tronquée et devienne illisible.
+# ⚠ Ne suffit PAS à faire fonctionner un modèle « à raisonnement » (type MiniMax
+# M2, o1...) : ceux-là dépensent des milliers de tokens à réfléchir et cassent
+# le JSON. À proscrire pour du dialogue vocal temps réel — préférer un modèle
+# classique (Llama 3.3 70B).
+MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "400"))
 # 0.6 : assez de variété pour ne pas sonner robotique, mais plus discipliné que
 # 0.7 — le modèle part moins dans tous les sens et respecte mieux le personnage.
 TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.6"))
