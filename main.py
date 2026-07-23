@@ -102,6 +102,7 @@ class PlayerModel(BaseModel):
     money: int | None = None
     items: list[str] = Field(default_factory=list)
     appearance: str = ""          # apparence perçue par le PNJ (genre, arme, masque...)
+    note: str = ""                # réputation : ce que la ville sait de lui
 
     _fix_items = field_validator("items", mode="before")(_empty_dict_as_list)
 
@@ -111,6 +112,8 @@ class WorldModel(BaseModel):
     weather: str = ""
     location: str = ""            # rue / quartier où se déroule la scène
     threatened: bool = False      # le joueur pointe une arme sur le PNJ
+    known_people: str = ""        # joueurs notoires en ligne (mémoire partagée)
+    events: str = ""              # événements du moment connus de toute la ville
 
 
 class VoiceModel(BaseModel):
@@ -280,7 +283,10 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
         speech, action = result["speech"], result["action"]
         emotion = result.get("emotion", "neutre")
         llm_cached = False
-        if not req.history:
+        # On ne met JAMAIS en cache une réponse de secours : sinon un raté
+        # ponctuel (modèle qui bug, JSON tronqué) se figerait et se répéterait
+        # à chaque fois que la même phrase est redite au même type de PNJ.
+        if not req.history and speech not in llm.FALLBACK_SPEECHES:
             await cache.set_llm(llm_key, speech, action)
 
     # ---------------- 3. TTS (avec cache) ----------------

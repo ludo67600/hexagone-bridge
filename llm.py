@@ -346,6 +346,14 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
     if ctx:
         lines.append("La personne en face de toi : " + " ; ".join(ctx) + ".")
 
+    # Réputation : ce que « la rue » sait de ce joueur. Le PNJ n'est pas obligé
+    # d'en parler, mais ça teinte son attitude (respect, méfiance, curiosité).
+    if player.get("note"):
+        lines.append(
+            f"Réputation : en ville, on dit de lui que c'est « {player['note']} ». "
+            "Tu peux l'avoir entendu dire, sans forcément le lui jeter au visage."
+        )
+
     wctx = []
     if world.get("time"):
         wctx.append(f"il est {world['time']}")
@@ -356,6 +364,19 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
     if wctx:
         lines.append("Contexte : " + ", ".join(wctx) + ".")
         lines.append("Tu peux évoquer ce décor (le lieu, l'heure, la météo, l'allure du visiteur) si c'est naturel, mais sans réciter ces informations.")
+
+    # Ce qui fait jaser la ville en ce moment — le PNJ est au courant comme tout
+    # le monde, il peut en parler si ça vient naturellement.
+    if world.get("events"):
+        lines.append(f"Ce qui se raconte en ce moment en ville : {world['events']}")
+
+    # Autres personnes connues actuellement en ville : permet au PNJ d'évoquer un
+    # joueur notoire (« un pote de X ? »), sans l'inventer.
+    if world.get("known_people"):
+        lines.append(
+            f"Personnes en vue dans le coin en ce moment : {world['known_people']}. "
+            "N'en parle que si c'est pertinent, ne les invente pas."
+        )
 
     if world.get("threatened"):
         lines += [
