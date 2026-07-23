@@ -547,11 +547,16 @@ def _infer_action(user_text: str, allowed: list[str]) -> dict | None:
     return None
 
 
-async def summarize(npc_name: str, player_name: str, history: list[dict]) -> dict:
+async def summarize(npc_name: str, player_name: str, history: list[dict],
+                    previous: str = "") -> dict:
     """Résume une conversation terminée pour la mémoire du PNJ.
 
     Renvoie {"summary": "une phrase", "sentiment": "positif|neutre|negatif"} :
     la phrase sert de souvenir, le sentiment fait évoluer la relation.
+
+    `previous` = ce que le PNJ retenait DÉJÀ de ce joueur. On le fournit pour que
+    le nouveau résumé CONSOLIDE l'ancien au lieu de l'écraser : ainsi le PNJ garde
+    la cause ET l'effet (ex. « il m'avait insulté puis s'est excusé, j'ai accepté »).
     """
     convo = []
     for h in (history or [])[-12:]:
@@ -560,13 +565,22 @@ async def summarize(npc_name: str, player_name: str, history: list[dict]) -> dic
         if isinstance(content, str) and content:
             convo.append(f"{role} : {content}")
     if not convo:
-        return {"summary": "", "sentiment": "neutre"}
+        return {"summary": previous or "", "sentiment": "neutre"}
+
+    prev_line = ""
+    if previous:
+        prev_line = (
+            f"\nCe que tu retenais déjà de lui : « {previous} ». "
+            "Fonds-le avec la nouvelle discussion en gardant les faits importants "
+            "du passé ET du présent (n'efface pas ce qui compte encore)."
+        )
 
     sys = (
-        f"Tu es {npc_name}. Voici une conversation que tu viens d'avoir avec "
-        f"{player_name or 'un visiteur'}. Résume en UNE phrase courte, à la première "
-        "personne, ce que tu dois en retenir pour la prochaine fois (un fait marquant, "
-        "ce qu'il voulait, comment ça s'est passé). Donne aussi ton sentiment envers lui.\n"
+        f"Tu es {npc_name}. Voici la dernière conversation que tu as eue avec "
+        f"{player_name or 'un visiteur'}.{prev_line}\n"
+        "Résume en UNE phrase courte (deux maximum), à la première personne, ce que "
+        "tu dois retenir de lui pour la prochaine fois : les faits marquants et comment "
+        "vos rapports ont évolué. Donne aussi ton sentiment global actuel envers lui.\n"
         'Réponds STRICTEMENT en JSON : {"summary": "...", "sentiment": "positif|neutre|negatif"}'
     )
 

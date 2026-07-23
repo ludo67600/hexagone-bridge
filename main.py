@@ -319,6 +319,7 @@ class SummarizeRequest(BaseModel):
     npc_name: str = "un habitant"
     player_name: str = ""
     history: list[dict] = Field(default_factory=list)
+    previous: str = ""            # souvenir déjà mémorisé (pour consolider, pas écraser)
 
     _fix_history = field_validator("history", mode="before")(_empty_dict_as_list)
 
@@ -327,7 +328,7 @@ class SummarizeRequest(BaseModel):
 async def summarize(req: SummarizeRequest, authorization: str | None = Header(default=None)):
     """Résume une conversation terminée (appelé par FiveM à la fermeture)."""
     _check_auth(authorization)
-    result = await llm.summarize(req.npc_name, req.player_name, req.history)
+    result = await llm.summarize(req.npc_name, req.player_name, req.history, req.previous)
     return {"ok": True, **result}
 
 
