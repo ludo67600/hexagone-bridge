@@ -67,6 +67,13 @@ LLM_API_KEY = os.getenv("LLM_API_KEY") or os.getenv("GROQ_API_KEY", "")
 LLM_PROVIDER_ORDER = [p.strip() for p in os.getenv("LLM_PROVIDER_ORDER", "").split(",") if p.strip()]
 LLM_PROVIDER_SORT = os.getenv("LLM_PROVIDER_SORT", "throughput")
 
+# Effort de raisonnement pour les modèles « à réflexion » (OpenRouter).
+#   ""      : ne rien envoyer — comportement par défaut du modèle (recommandé pour Llama)
+#   "none" / "low" / "medium" / "high" : bride ou coupe la réflexion.
+# "none" ou "low" = le modèle intelligent écrit mieux SANS exploser la latence
+# ni le budget de tokens. À utiliser si tu passes sur un modèle à raisonnement.
+LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", "").strip().lower()
+
 MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
 # 400 : large pour une réplique de 1-2 phrases + le JSON. Un modèle non bavard
 # n'en consomme qu'une fraction (pas de surcoût), mais ça évite qu'une réponse
@@ -419,6 +426,14 @@ def _parse_json(raw: str) -> dict | None:
         return None
     txt = raw.strip()
 
+    # Modèles « à raisonnement » (MiniMax M2, DeepSeek-R1, QwQ...) : ils préfixent
+    # parfois leur réflexion dans <think>...</think> à l'intérieur du contenu. On
+    # la retire avant de chercher le JSON, sinon les accolades de la réflexion
+    # brouillent l'extraction. Sans effet sur un modèle classique (pas de balise).
+    txt = re.sub(r"<think>.*?</think>", "", txt, flags=re.DOTALL | re.IGNORECASE).strip()
+    # Balise ouverte mais jamais refermée (réflexion coupée par max_tokens).
+    txt = re.sub(r"<think>.*$", "", txt, flags=re.DOTALL | re.IGNORECASE).strip()
+
     # Retire un éventuel ```json ... ```
     if txt.startswith("```"):
         txt = re.sub(r"^```[a-zA-Z]*\s*", "", txt)
@@ -569,7 +584,14 @@ async def generate(
                 provider["order"] = LLM_PROVIDER_ORDER
             if LLM_PROVIDER_SORT:
                 provider["sort"] = LLM_PROVIDER_SORT
-            kwargs["extra_body"] = {"provider": provider}
+            extra = {"provider": provider}
+            # Bride la réflexion des modèles « à raisonnement » : sans ça, ils
+            # dépensent tout le budget de tokens à penser et le JSON sort tronqué.
+            if LLM_REASONING_EFFORT == "none":
+                extra["reasoning"] = {"enabled": False}
+            elif LLM_REASONING_EFFORT in ("low", "medium", "high"):
+                extra["reasoning"] = {"effort": LLM_REASONING_EFFORT}
+            kwargs["extra_body"] = extra
 
         return await client.chat.completions.create(**kwargs)
 
