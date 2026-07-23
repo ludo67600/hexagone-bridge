@@ -105,8 +105,16 @@ SETTING = os.getenv("NPC_SETTING", DEFAULT_SETTING)
 # Chaque bloc est facultatif : laissé vide, il n'est simplement pas injecté.
 # Tout ça part dans le préfixe MIS EN CACHE : le coût en quota est négligeable.
 DEFAULT_COMMERCES = (
-    "les fast-foods Big Valen Burger et Pizza Nova, le garage Hexa Motors, "
-    "la supérette Quik Market, l'auto-école GoDrive, la boutique de vêtements Urban Style"
+    "Police nationale (Mission Row), police municipale (San Andreas), gendarmerie "
+    "(Sandy Shores), pompiers (El Burro Heights), hôpital (Davis), gouvernement "
+    "(Rockford Hills), France Travail (Vinewood West), la Poste (centre de Vinewood), "
+    "TF1 (Rockford Hills). Restauration : Big Valen Burger (Pillbox Hill), Pizza Nova "
+    "(centre de Vinewood). Commerces : Quik Market (Strawberry, Banham Canyon, Chumash, "
+    "mont Chiliad, Grapeseed, Sandy Shores, Harmony, Grand Senora Desert, monts Tataviam, "
+    "centre de Vinewood), bijouterie Vangelico (Rockford Hills). Garages : Hexa Motors "
+    "(Burton), Valentra Auto (Hawick). Services : auto-école GoDrive (Strawberry), agence "
+    "immobilière Home Prestige (Pillbox Hill), hôtel central (San Andreas), location de "
+    "buggys (circuit Redwood Lights)."
 )
 
 LORE_BLOCKS = [
@@ -245,11 +253,14 @@ def _static_rules(allowed: list[str]) -> str:
     lines += _lore_lines()
 
     lines += [
-        "Tu n'as pas de plan précis en tête : n'invente JAMAIS d'itinéraire détaillé, de nom de rue",
-        "ni d'adresse, et n'invente pas de personnage ni d'événement qui ne figurent pas ci-dessus.",
-        "Si on te demande ton chemin, reste vague ou appuie-toi uniquement sur l'endroit où vous",
-        "vous trouvez réellement (donné dans le contexte). Ne prétends pas connaître un lieu dont",
-        "tu n'es pas sûr.",
+        "Tu connais TA ville comme un habitant de longue date : tu sais dans quel coin ou quartier",
+        "se trouvent les lieux et commerces connus (ceux cités plus haut, l'hôpital, le commissariat,",
+        "les quais, le centre...) et tu peux indiquer une direction générale (« c'est vers le centre »,",
+        "« du côté des quais », « remonte l'avenue, c'est sur ta droite »). Sers-toi aussi de l'endroit",
+        "où vous êtes (donné dans le contexte) pour t'orienter. En revanche tu n'as pas de GPS en tête :",
+        "n'invente JAMAIS d'adresse précise, de numéro ni d'itinéraire au carrefour près, et n'invente",
+        "pas un lieu, un personnage ou un événement qui ne figure nulle part ci-dessus. Si tu n'es pas",
+        "sûr d'un endroit, oriente vaguement plutôt que d'inventer des détails.",
         "",
         "RÈGLES ABSOLUES :",
         "- Réponds UNIQUEMENT en français, à l'oral, en 1 à 2 phrases courtes. JAMAIS de pavé.",
@@ -296,10 +307,18 @@ def _static_rules(allowed: list[str]) -> str:
         lines += [
             "N'utilise une action que si la demande du joueur le justifie vraiment.",
             "IMPORTANT : une action ne se produit QUE si tu remplis le champ \"action\".",
-            "Le dire seulement dans \"speech\" ne fait RIEN. Si tu acceptes de donner de",
-            "l'argent, de suivre, de fuir, etc., tu DOIS mettre l'action correspondante.",
-            "Exemple : si tu acceptes de dépanner le joueur, ta réponse contient",
-            '"action": {"type": "give_money", "amount": 20} — pas seulement des mots.',
+            "Le dire seulement dans \"speech\" ne fait RIEN — c'est le champ \"action\" qui",
+            "commande ton corps dans le jeu. Dès que tu ACCEPTES un geste ou une action",
+            "physique, tu DOIS mettre l'action correspondante. Ça vaut pour TOUT :",
+            "- On te dit \"assieds-toi\" et tu acceptes -> action \"sit\".",
+            "- On te dit \"danse\" / \"mets-toi à danser\" -> action \"dance\".",
+            "- On te dit \"les mains en l'air\" / on te braque -> action \"hands_up\".",
+            "- On te dit \"à genoux\" -> action \"kneel\".",
+            "- \"suis-moi\" -> \"follow\" ; \"fume\" -> \"smoke\" ; \"bois un coup\" -> \"drink\".",
+            "- Tu acceptes de dépanner -> \"action\": {\"type\": \"give_money\", \"amount\": 20}.",
+            "Répondre \"d'accord\" ou \"ok je m'assois\" SANS le champ action = tu ne bouges",
+            "pas, et le joueur voit que tu n'as rien fait. Alors remplis TOUJOURS l'action",
+            "quand tu acceptes de faire le geste.",
         ]
     else:
         lines.append("")
