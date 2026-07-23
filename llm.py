@@ -330,6 +330,18 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
         lines.append(f"Ce que tu sais : {npc['knows']}.")
     if npc.get("ignores"):
         lines.append(f"Ce que tu ignores totalement : {npc['ignores']}. Si on t'en parle, dis que tu n'en sais rien.")
+    if npc.get("goal"):
+        lines.append(
+            f"Ton objectif du moment : {npc['goal']}. Amène-le naturellement dans la"
+            " conversation quand c'est opportun, sans le forcer ni le réciter."
+        )
+
+    # Mémoire : ce personnage se souvient de CE joueur (relation + dernier échange).
+    if npc.get("memory"):
+        lines.append(
+            f"TU CONNAIS DÉJÀ cette personne : {npc['memory']} "
+            "Tiens-en compte : ne te présente pas comme si c'était la première fois."
+        )
 
     ctx = []
     if player.get("name"):
@@ -460,6 +472,49 @@ def _sanitize(data: dict | None, allowed: list[str]) -> dict:
         speech = speech[:MAX_SPEECH_CHARS].rsplit(" ", 1)[0] + "..."
 
     return {"speech": speech, "action": action, "emotion": emotion}
+
+
+async def summarize(npc_name: str, player_name: str, history: list[dict]) -> dict:
+    """Résume une conversation terminée pour la mémoire du PNJ.
+
+    Renvoie {"summary": "une phrase", "sentiment": "positif|neutre|negatif"} :
+    la phrase sert de souvenir, le sentiment fait évoluer la relation.
+    """
+    convo = []
+    for h in (history or [])[-12:]:
+        role = "Le visiteur" if h.get("role") == "user" else npc_name
+        content = h.get("content")
+        if isinstance(content, str) and content:
+            convo.append(f"{role} : {content}")
+    if not convo:
+        return {"summary": "", "sentiment": "neutre"}
+
+    sys = (
+        f"Tu es {npc_name}. Voici une conversation que tu viens d'avoir avec "
+        f"{player_name or 'un visiteur'}. Résume en UNE phrase courte, à la première "
+        "personne, ce que tu dois en retenir pour la prochaine fois (un fait marquant, "
+        "ce qu'il voulait, comment ça s'est passé). Donne aussi ton sentiment envers lui.\n"
+        'Réponds STRICTEMENT en JSON : {"summary": "...", "sentiment": "positif|neutre|negatif"}'
+    )
+
+    try:
+        resp = await _get_client().chat.completions.create(
+            model=MODEL,
+            messages=[{"role": "system", "content": sys},
+                      {"role": "user", "content": "\n".join(convo)}],
+            max_tokens=200,
+            temperature=0.4,
+        )
+        data = _parse_json(resp.choices[0].message.content) or {}
+    except Exception as exc:
+        print(f"[llm] résumé échec : {exc}")
+        return {"summary": "", "sentiment": "neutre"}
+
+    summary = str(data.get("summary", "")).strip()[:250]
+    sentiment = _norm(str(data.get("sentiment", "neutre")))
+    if sentiment not in ("positif", "neutre", "negatif"):
+        sentiment = "neutre"
+    return {"summary": summary, "sentiment": sentiment}
 
 
 async def generate(

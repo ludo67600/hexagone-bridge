@@ -89,6 +89,8 @@ class NpcModel(BaseModel):
     ignores: str = ""
     tone: str = ""
     style: str = ""               # façon de parler (argot de rue, soutenu, jargon métier...)
+    goal: str = ""                # objectif du personnage (vendre, recruter, s'informer...)
+    memory: str = ""              # ce qu'il retient de ce joueur (relation + dernier échange)
     allowed_actions: list[str] = Field(default_factory=list)
 
     _fix_actions = field_validator("allowed_actions", mode="before")(_empty_dict_as_list)
@@ -250,44 +252,32 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
             "timings": {"total": round(time.perf_counter() - t0, 3)},
         }
 
-    # ---------------- 2. LLM (avec cache) ----------------
+    # ---------------- 2. LLM ----------------
+    # Plus de cache LLM : chaque personnage a désormais sa mémoire et sa relation
+    # propres avec CE joueur. Une réponse dépend donc du contexte (qui parle, ce
+    # qu'ils savent l'un de l'autre) — la réutiliser servirait des répliques à
+    # côté. Seule la TTS reste mise en cache (même texte + même voix = même son).
     allowed = req.npc.allowed_actions or []
-    llm_key = cache.make_key("llm", req.npc.id, transcription)
 
-    cached_llm = await cache.get_llm(llm_key) if not req.history else None
-    # NB : on ne sert le cache que hors contexte conversationnel, sinon le PNJ
-    # répondrait à côté (une même phrase n'a pas le même sens au 4e échange).
-
-    if cached_llm:
-        speech, action = cached_llm["speech"], cached_llm["action"]
-        emotion = "neutre"   # non mis en cache : voix neutre sur les réponses réutilisées
-        timings["llm"] = 0.0
-        llm_cached = True
-    else:
-        t = time.perf_counter()
-        try:
-            result = await llm.generate(
-                npc=req.npc.model_dump(),
-                player=req.player.model_dump(),
-                world=req.world.model_dump(),
-                history=req.history,
-                user_text=transcription,
-                allowed=allowed,
-            )
-        except Exception as exc:
-            if llm.is_quota_error(exc):
-                return await _quota_reply(req, t0, "LLM (" + llm.LLM_BASE_URL + ")", exc)
-            print(f"[bridge] LLM échec : {exc}")
-            raise HTTPException(status_code=502, detail="IA indisponible")
-        timings["llm"] = round(time.perf_counter() - t, 3)
-        speech, action = result["speech"], result["action"]
-        emotion = result.get("emotion", "neutre")
-        llm_cached = False
-        # On ne met JAMAIS en cache une réponse de secours : sinon un raté
-        # ponctuel (modèle qui bug, JSON tronqué) se figerait et se répéterait
-        # à chaque fois que la même phrase est redite au même type de PNJ.
-        if not req.history and speech not in llm.FALLBACK_SPEECHES:
-            await cache.set_llm(llm_key, speech, action)
+    t = time.perf_counter()
+    try:
+        result = await llm.generate(
+            npc=req.npc.model_dump(),
+            player=req.player.model_dump(),
+            world=req.world.model_dump(),
+            history=req.history,
+            user_text=transcription,
+            allowed=allowed,
+        )
+    except Exception as exc:
+        if llm.is_quota_error(exc):
+            return await _quota_reply(req, t0, "LLM (" + llm.LLM_BASE_URL + ")", exc)
+        print(f"[bridge] LLM échec : {exc}")
+        raise HTTPException(status_code=502, detail="IA indisponible")
+    timings["llm"] = round(time.perf_counter() - t, 3)
+    speech, action = result["speech"], result["action"]
+    emotion = result.get("emotion", "neutre")
+    llm_cached = False
 
     # ---------------- 3. TTS (avec cache) ----------------
     # L'émotion teinte la voix (pitch/débit) ; tts.py borne ensuite les valeurs.
@@ -323,6 +313,22 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
         "cached": {"llm": llm_cached, "tts": tts_cached},
         "timings": timings,
     }
+
+
+class SummarizeRequest(BaseModel):
+    npc_name: str = "un habitant"
+    player_name: str = ""
+    history: list[dict] = Field(default_factory=list)
+
+    _fix_history = field_validator("history", mode="before")(_empty_dict_as_list)
+
+
+@app.post("/summarize")
+async def summarize(req: SummarizeRequest, authorization: str | None = Header(default=None)):
+    """Résume une conversation terminée (appelé par FiveM à la fermeture)."""
+    _check_auth(authorization)
+    result = await llm.summarize(req.npc_name, req.player_name, req.history)
+    return {"ok": True, **result}
 
 
 @app.post("/purge")
