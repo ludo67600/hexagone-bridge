@@ -638,4 +638,11 @@ async def generate(
 
     raw = resp.choices[0].message.content
 
-    return _sanitize(_parse_json(raw), allowed)
+    parsed = _parse_json(raw)
+    # DIAGNOSTIC actions : montre ce que le LLM a émis et ce qui est autorisé.
+    # Permet de distinguer « le modèle n'émet pas l'action » (raw_action absente)
+    # de « l'action est filtrée » (présente mais absente de allowed).
+    raw_action = (parsed or {}).get("action") if isinstance(parsed, dict) else None
+    print(f"[llm] DEBUG action brute={raw_action} | allowed={allowed}")
+
+    return _sanitize(parsed, allowed)
