@@ -412,7 +412,10 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
     # Ce qui fait jaser la ville en ce moment — le PNJ est au courant comme tout
     # le monde, il peut en parler si ça vient naturellement.
     if world.get("events"):
-        lines.append(f"Ce qui se raconte en ce moment en ville : {world['events']}")
+        lines.append(
+            "Rumeurs SÉPARÉES qui circulent en ville en ce moment (chaque phrase est un "
+            f"fait distinct, ne les fusionne pas, n'en cite qu'une si c'est pertinent) : {world['events']}"
+        )
 
     # Autres personnes connues actuellement en ville : permet au PNJ d'évoquer un
     # joueur notoire (« un pote de X ? »), sans l'inventer.
