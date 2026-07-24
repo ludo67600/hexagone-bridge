@@ -525,39 +525,6 @@ def _sanitize(data: dict | None, allowed: list[str]) -> dict:
     return {"speech": speech, "action": action, "emotion": emotion}
 
 
-# Ordres de geste explicites -> action forcée. Filet de sécurité : certains
-# modèles (Llama 4 Scout...) répondent « d'accord » sans JAMAIS remplir le champ
-# action. Si le joueur donne un ordre clair et que l'action est autorisée, on la
-# déclenche quand même. Le texte est normalisé (minuscules, sans accents) avant
-# comparaison, donc « À genoux ! » -> « a genoux ». Ordre = du plus spécifique au
-# plus général (le premier qui matche gagne).
-_ACTION_KEYWORDS = [
-    ("hands_up",    ("mains en l air", "haut les mains", "leve les mains", "levez les mains", "leve tes mains")),
-    ("hands_down",  ("baisse les mains", "baisse tes mains", "baissez les mains")),
-    ("kneel",       ("a genoux", "agenouille", "mets toi a genou")),
-    ("stop_pose",   ("releve toi", "leve toi", "remets toi debout", "arrete de danser", "arrete de fumer")),
-    ("stop_follow", ("arrete de me suivre", "arrete de suivre", "ne me suis plus", "reste la", "reste ici", "arrete de me suivre")),
-    ("follow",      ("suis moi", "suivez moi", "viens avec moi", "accompagne moi", "accompagnez moi", "suis moi")),
-    ("sit",         ("assieds", "assois", "asseoir", "assis toi", "pose toi")),
-    ("dance",       ("danse", "danser", "mets toi a danser")),
-    ("smoke",       ("fume une", "fume la", "fume ta", "allume une clope", "grille une")),
-    ("drink",       ("bois un", "boire un", "prends un verre", "sers toi un verre")),
-    ("flee",        ("sauve toi", "va t en", "degage", "casse toi", "fuis", "cours te cacher")),
-]
-
-
-def _infer_action(user_text: str, allowed: list[str]) -> dict | None:
-    """Déduit une action d'un ordre clair du joueur (nil si aucun / non autorisé)."""
-    t = _norm(user_text or "")
-    if not t:
-        return None
-    allow = set(allowed or [])
-    for atype, keys in _ACTION_KEYWORDS:
-        if atype in allow and any(k in t for k in keys):
-            return {"type": atype}
-    return None
-
-
 async def summarize(npc_name: str, player_name: str, history: list[dict],
                     previous: str = "") -> dict:
     """Résume une conversation terminée pour la mémoire du PNJ.
@@ -696,16 +663,8 @@ async def generate(
 
     raw = resp.choices[0].message.content
 
-    parsed = _parse_json(raw)
-    result = _sanitize(parsed, allowed)
-
-    # Filet de sécurité : si le modèle n'a pas rempli l'action mais que le joueur
-    # a donné un ordre clair (« assieds-toi », « danse »...), on la force. Indispensable
-    # avec les modèles qui « disent oui » sans structurer l'action (ex : Llama 4 Scout).
-    if result["action"].get("type") in (None, "none"):
-        forced = _infer_action(user_text, allowed)
-        if forced:
-            result["action"] = forced
-            print(f"[llm] action forcée depuis la parole du joueur : {forced['type']}")
-
-    return result
+    # L'action provient UNIQUEMENT du modèle : elle reste ainsi cohérente avec la
+    # parole (s'il refuse, il met "none" ; s'il accepte, il met le geste). On ne
+    # force plus rien depuis les mots-clés du joueur — sinon un PNJ qui refuse à
+    # l'oral exécuterait quand même l'action.
+    return _sanitize(_parse_json(raw), allowed)
