@@ -277,7 +277,6 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
     timings["llm"] = round(time.perf_counter() - t, 3)
     speech, action = result["speech"], result["action"]
     emotion = result.get("emotion", "neutre")
-    llm_cached = False
 
     # ---------------- 3. TTS (avec cache) ----------------
     # L'émotion teinte la voix (pitch/débit) ; tts.py borne ensuite les valeurs.
@@ -310,7 +309,7 @@ async def talk(req: TalkRequest, authorization: str | None = Header(default=None
         "emotion": emotion,
         "action": action,
         "audio_b64": base64.b64encode(audio_out).decode("ascii") if audio_out else "",
-        "cached": {"llm": llm_cached, "tts": tts_cached},
+        "cached": {"llm": False, "tts": tts_cached},
         "timings": timings,
     }
 
