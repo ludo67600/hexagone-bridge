@@ -91,6 +91,7 @@ class NpcModel(BaseModel):
     style: str = ""               # façon de parler (argot de rue, soutenu, jargon métier...)
     goal: str = ""                # objectif du personnage (vendre, recruter, s'informer...)
     memory: str = ""              # ce qu'il retient de ce joueur (relation + dernier échange)
+    gossip: str = ""              # faits / ragots appris d'autres joueurs
     allowed_actions: list[str] = Field(default_factory=list)
 
     _fix_actions = field_validator("allowed_actions", mode="before")(_empty_dict_as_list)
@@ -319,6 +320,7 @@ class SummarizeRequest(BaseModel):
     player_name: str = ""
     history: list[dict] = Field(default_factory=list)
     previous: str = ""            # souvenir déjà mémorisé (pour consolider, pas écraser)
+    extract_facts: bool = True    # extraire aussi des faits/ragots partageables
 
     _fix_history = field_validator("history", mode="before")(_empty_dict_as_list)
 
@@ -327,7 +329,9 @@ class SummarizeRequest(BaseModel):
 async def summarize(req: SummarizeRequest, authorization: str | None = Header(default=None)):
     """Résume une conversation terminée (appelé par FiveM à la fermeture)."""
     _check_auth(authorization)
-    result = await llm.summarize(req.npc_name, req.player_name, req.history, req.previous)
+    result = await llm.summarize(
+        req.npc_name, req.player_name, req.history, req.previous, req.extract_facts
+    )
     return {"ok": True, **result}
 
 

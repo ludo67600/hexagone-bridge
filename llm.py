@@ -383,6 +383,18 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
             "Tiens-en compte : ne te présente pas comme si c'était la première fois."
         )
 
+    # Faits / ragots appris d'autres joueurs (pas inventés — liste fermée).
+    if npc.get("gossip"):
+        lines.append(
+            "CHOSES QUE TU AS APPRISES d'autres gens (liste fermée, n'invente RIEN "
+            "en plus). Tu peux en parler si on te le demande ou si c'est naturel, "
+            "sans tout balancer d'un coup. Respecte la sensibilité : "
+            "[public] = tu peux le dire librement ; [private] = tu hésites / tu "
+            "demandes de ne pas répéter ; [secret] = tu refuses ou tu restes vague "
+            "sauf si on te met vraiment la pression.\n"
+            f"{npc['gossip']}"
+        )
+
     ctx = []
     if player.get("name"):
         ctx.append(f"il se présente comme {player['name']}")
@@ -526,15 +538,11 @@ def _sanitize(data: dict | None, allowed: list[str]) -> dict:
 
 
 async def summarize(npc_name: str, player_name: str, history: list[dict],
-                    previous: str = "") -> dict:
+                    previous: str = "", extract_facts: bool = True) -> dict:
     """Résume une conversation terminée pour la mémoire du PNJ.
 
-    Renvoie {"summary": "une phrase", "sentiment": "positif|neutre|negatif"} :
-    la phrase sert de souvenir, le sentiment fait évoluer la relation.
-
-    `previous` = ce que le PNJ retenait DÉJÀ de ce joueur. On le fournit pour que
-    le nouveau résumé CONSOLIDE l'ancien au lieu de l'écraser : ainsi le PNJ garde
-    la cause ET l'effet (ex. « il m'avait insulté puis s'est excusé, j'ai accepté »).
+    Renvoie summary + sentiment (+ facts optionnels pour les ragots A→B).
+    `previous` consolide l'ancien souvenir au lieu de l'écraser.
     """
     convo = []
     for h in (history or [])[-12:]:
@@ -543,7 +551,7 @@ async def summarize(npc_name: str, player_name: str, history: list[dict],
         if isinstance(content, str) and content:
             convo.append(f"{role} : {content}")
     if not convo:
-        return {"summary": previous or "", "sentiment": "neutre"}
+        return {"summary": previous or "", "sentiment": "neutre", "facts": []}
 
     prev_line = ""
     if previous:
@@ -553,13 +561,32 @@ async def summarize(npc_name: str, player_name: str, history: list[dict],
             "du passé ET du présent (n'efface pas ce qui compte encore)."
         )
 
+    facts_block = ""
+    if extract_facts:
+        facts_block = (
+            "\nExtrais aussi 0 à 3 FAITS concrets appris dans CETTE conversation "
+            "(choses que le visiteur a dites et que tu pourrais raconter à quelqu'un "
+            "d'autre plus tard). Uniquement ce qui est explicitement dans l'échange ; "
+            "si rien de mémorable : liste vide. Pour chaque fait : "
+            "fact (phrase courte), about_name (prénom de la personne dont on parle, "
+            "ou null si c'est sur le visiteur lui-même / général), "
+            "sensitivity (public|private|secret : secret = confié en confiance).\n"
+            'Format JSON : {"summary":"...","sentiment":"positif|neutre|negatif",'
+            '"facts":[{"fact":"...","about_name":null,"sensitivity":"public"}]}'
+        )
+    else:
+        facts_block = (
+            '\nRéponds STRICTEMENT en JSON : '
+            '{"summary": "...", "sentiment": "positif|neutre|negatif", "facts": []}'
+        )
+
     sys = (
         f"Tu es {npc_name}. Voici la dernière conversation que tu as eue avec "
         f"{player_name or 'un visiteur'}.{prev_line}\n"
         "Résume en UNE phrase courte (deux maximum), à la première personne, ce que "
         "tu dois retenir de lui pour la prochaine fois : les faits marquants et comment "
-        "vos rapports ont évolué. Donne aussi ton sentiment global actuel envers lui.\n"
-        'Réponds STRICTEMENT en JSON : {"summary": "...", "sentiment": "positif|neutre|negatif"}'
+        "vos rapports ont évolué. Donne aussi ton sentiment global actuel envers lui."
+        f"{facts_block}"
     )
 
     try:
@@ -567,19 +594,42 @@ async def summarize(npc_name: str, player_name: str, history: list[dict],
             model=MODEL,
             messages=[{"role": "system", "content": sys},
                       {"role": "user", "content": "\n".join(convo)}],
-            max_tokens=200,
+            max_tokens=350 if extract_facts else 200,
             temperature=0.4,
         )
         data = _parse_json(resp.choices[0].message.content) or {}
     except Exception as exc:
         print(f"[llm] résumé échec : {exc}")
-        return {"summary": "", "sentiment": "neutre"}
+        return {"summary": "", "sentiment": "neutre", "facts": []}
 
     summary = str(data.get("summary", "")).strip()[:250]
     sentiment = _norm(str(data.get("sentiment", "neutre")))
     if sentiment not in ("positif", "neutre", "negatif"):
         sentiment = "neutre"
-    return {"summary": summary, "sentiment": sentiment}
+
+    facts_out = []
+    raw_facts = data.get("facts") if extract_facts else []
+    if isinstance(raw_facts, list):
+        for item in raw_facts[:3]:
+            if not isinstance(item, dict):
+                continue
+            fact = str(item.get("fact", "")).strip()[:255]
+            if not fact:
+                continue
+            sens = _norm(str(item.get("sensitivity", "public")))
+            if sens not in ("public", "private", "secret"):
+                sens = "public"
+            about = item.get("about_name")
+            about_name = None
+            if isinstance(about, str) and about.strip():
+                about_name = about.strip()[:80]
+            facts_out.append({
+                "fact": fact,
+                "about_name": about_name,
+                "sensitivity": sens,
+            })
+
+    return {"summary": summary, "sentiment": sentiment, "facts": facts_out}
 
 
 async def generate(
