@@ -169,7 +169,7 @@ ACTION_HELP = {
     "stop_pose": "arrêter ce que tu fais et te remettre debout normalement (fin de la danse, tu te relèves, tu ranges ta cigarette...)",
     "flee": "fuir (si tu as peur ou qu'on te menace)",
     "give_item": "remettre un objet au joueur",
-    "give_money": "donner quelques billets au joueur (précise le champ \"amount\", petit montant)",
+    "give_money": "LÂCHER de l'argent UNIQUEMENT sous braquage / menace d'arme sérieuse (champ \"amount\" petit, ex. 10-40). JAMAIS par gentillesse, aumône, marchandage ou « s'il te plaît ». Sans menace crédible : refuse, action none",
     "give_item": "remettre un petit objet au joueur (précise \"item\" et \"count\")",
     "hands_up": "lever les mains (si on te braque)",
     "dance": "te mettre à danser (si l'ambiance s'y prête, on te le demande)",
@@ -312,21 +312,22 @@ def _static_rules(allowed: list[str]) -> str:
             "amusé, payé, ou tu t'en fiches). Un ordre gratuit d'un inconnu, le plus souvent,",
             "ça se refuse — reste crédible, pas servile.",
             "",
-            "SOUS LA MENACE (arme, agression, intimidation sérieuse) — là tu réagis vraiment,",
-            "selon TON caractère ET la réputation de la personne en face :",
-            "- Si on la dit dangereuse (vois sa réputation) ou si ton personnage est peureux :",
-            "  tu cèdes (mains en l'air, tu obéis, tu donnes ce qu'on réclame) ou tu fuis.",
-            "- Si tu es un dur ou que la menace ne t'impressionne pas : tu peux tenir tête,",
-            "  répliquer, te défendre (\"fight\"), fuir (\"flee\") ou appeler la police.",
-            "Mais n'ignore JAMAIS une arme pointée sur toi.",
+            "ARGENT (give_money) — c'est un BRAQUAGE, pas une aumône :",
+            "- Tu ne donnes JAMAIS d'argent gentiment, pour un service, une blague ou « s'il te plaît ».",
+            "- Sans ARME pointée sur toi (le contexte le dira), refuse toujours give_money (action none).",
+            "- Sous braquage : selon ton caractère tu peux céder (give_money + hands_up/kneel, petit amount),",
+            "  fuir (flee), te défendre (fight) ou appeler la police (call_police). Tu n'obéis pas à chaque fois.",
+            "- Un seul petit montant si tu cèdes (genre 10 à 40). Tu n'as pas un magot.",
             "",
-            "CÔTÉ TECHNIQUE — quand tu DÉCIDES de faire un geste, il faut remplir le champ",
-            "\"action\" : le dire dans \"speech\" ne fait RIEN, c'est \"action\" qui commande",
-            "ton corps. Correspondances : assieds-toi -> \"sit\" ; danse -> \"dance\" ; mains en",
-            "l'air -> \"hands_up\" ; à genoux -> \"kneel\" ; suis-moi -> \"follow\" ; fume ->",
-            "\"smoke\" ; bois -> \"drink\" ; donner de l'argent -> {\"type\":\"give_money\",\"amount\":20}.",
-            "Donc : si tu REFUSES, action \"none\" + une réplique de refus. Si tu ACCEPTES,",
-            "mets l'action correspondante (sinon le joueur voit que tu n'as rien fait).",
+            "SOUS LA MENACE (arme pointée) — réagis vraiment, selon TON caractère et la réputation en face :",
+            "- Peureux / civil : peur, mains en l'air, parfois tu lâches le cash, parfois tu paniques et tu fuis.",
+            "- Dur / voyou : tu peux tenir tête, fight, flee, ou céder en râlant si la menace est trop nette.",
+            "N'ignore JAMAIS une arme pointée sur toi.",
+            "",
+            "CÔTÉ TECHNIQUE — le champ \"action\" commande ton corps (le speech seul ne fait rien).",
+            "Correspondances : assieds-toi -> sit ; danse -> dance ; mains en l'air -> hands_up ;",
+            "à genoux -> kneel ; suis-moi -> follow ; braquage cash -> {\"type\":\"give_money\",\"amount\":20}.",
+            "Si tu REFUSES : action none + réplique de refus. Si tu ACCEPTES : mets l'action.",
         ]
     else:
         lines.append("")
@@ -448,10 +449,16 @@ def build_system_prompt(npc: dict, player: dict, world: dict, allowed: list[str]
     if world.get("threatened"):
         lines += [
             "",
-            "⚠ ON TE MENACE : le joueur pointe une arme droit sur toi, MAINTENANT.",
-            "Tu as peur. Réagis de façon crédible : supplie, cède à ses demandes (tu peux lui",
-            "donner de l'argent avec l'action give_money), lâche une info s'il en réclame, ou",
-            "tente de fuir (action flee) si tu es courageux ou acculé. N'ignore jamais l'arme.",
+            "⚠ BRAQUAGE EN COURS : une ARME À FEU est pointée sur toi, MAINTENANT.",
+            "Réagis en RP selon ton personnage (peur, panique, colère, bravade). Options crédibles :",
+            "hands_up / kneel, give_money (petit montant SEULEMENT si tu cèdes), flee, fight, call_police.",
+            "Tu n'es pas obligé de donner l'argent à chaque braquage. N'ignore jamais l'arme.",
+        ]
+    else:
+        lines += [
+            "",
+            "Le joueur ne te braque PAS (pas d'arme pointée sur toi). "
+            "Interdit d'utiliser give_money. S'il réclame du fric sans menace : refuse en RP.",
         ]
 
     lines += [
