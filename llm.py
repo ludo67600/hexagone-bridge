@@ -148,6 +148,7 @@ ACTION_TYPES = {
     "flee",
     "give_item",
     "give_money",
+    "receive_money",
     "hands_up",
     "dance",
     "sit",
@@ -171,6 +172,7 @@ ACTION_HELP = {
     "give_item": "remettre un objet au joueur",
     "give_money": "LÂCHER de l'argent UNIQUEMENT sous braquage / menace d'arme sérieuse (champ \"amount\" petit, ex. 10-40). JAMAIS par gentillesse, aumône, marchandage ou « s'il te plaît ». Sans menace crédible : refuse, action none",
     "give_item": "remettre un petit objet au joueur (précise \"item\" et \"count\")",
+    "receive_money": "ENCAISSER l'argent que le joueur te DONNE de lui-même (« tiens, 100 euros », « prends ça »). Mets dans \"amount\" la somme qu'il annonce, telle quelle. Rien à voir avec give_money : ici c'est LUI qui donne. N'invente jamais de somme, et ne déclenche pas cette action si tu ne fais que MENDIER : tant qu'il n'a rien donné, action none",
     "hands_up": "lever les mains (si on te braque)",
     "dance": "te mettre à danser (si l'ambiance s'y prête, on te le demande)",
     "sit": "t'asseoir par terre (si on te le demande ou pour te poser)",
@@ -319,6 +321,17 @@ def _static_rules(allowed: list[str]) -> str:
             "  fuir (flee), te défendre (fight) ou appeler la police (call_police). Tu n'obéis pas à chaque fois.",
             "- Un seul petit montant si tu cèdes (genre 10 à 40). Tu n'as pas un magot.",
             "",
+            "QUAND LE JOUEUR TE DONNE DE L'ARGENT (receive_money) — l'inverse exact :",
+            "- S'il t'offre une somme de lui-même (« tiens, 100 euros », « prends ça »),",
+            "  déclenche receive_money avec le montant QU'IL ANNONCE, sans le modifier.",
+            "- Réagis selon ton personnage et ta situation : un type à la rue est bouleversé,",
+            "  un bourgeois trouve ça déplacé, un voyou se méfie d'un piège. Pas de merci robotique.",
+            "- Tu peux MENDIER, demander, insister si ton personnage est pauvre — mais tant qu'il",
+            "  n'a rien donné, c'est action none. Ne déclenche receive_money qu'au moment du don.",
+            "- N'invente JAMAIS un montant qu'il n'a pas dit. S'il dit « tiens » sans somme,",
+            "  demande-lui combien, action none.",
+            "- Tu t'en souviendras : un don marque durablement ta relation avec lui.",
+            "",
             "SOUS LA MENACE (arme pointée) — réagis vraiment, selon TON caractère et la réputation en face :",
             "- Peureux / civil : peur, mains en l'air, parfois tu lâches le cash, parfois tu paniques et tu fuis.",
             "- Dur / voyou : tu peux tenir tête, fight, flee, ou céder en râlant si la menace est trop nette.",
@@ -326,7 +339,7 @@ def _static_rules(allowed: list[str]) -> str:
             "",
             "CÔTÉ TECHNIQUE — le champ \"action\" commande ton corps (le speech seul ne fait rien).",
             "Correspondances : assieds-toi -> sit ; danse -> dance ; mains en l'air -> hands_up ;",
-            "à genoux -> kneel ; suis-moi -> follow ; braquage cash -> {\"type\":\"give_money\",\"amount\":20}.",
+            "à genoux -> kneel ; suis-moi -> follow ; braquage cash -> {\"type\":\"give_money\",\"amount\":20} ; il te tend 100 -> {\"type\":\"receive_money\",\"amount\":100}.",
             "Si tu REFUSES : action none + réplique de refus. Si tu ACCEPTES : mets l'action.",
         ]
     else:
@@ -343,6 +356,7 @@ def _static_rules(allowed: list[str]) -> str:
         'Pour une action : {"speech": "...", "emotion": "joie", "action": {"type": "follow", "target": "player"}}',
         'Pour donner un objet : {"speech": "...", "emotion": "neutre", "action": {"type": "give_item", "item": "bandage", "count": 1}}',
         'Pour donner de l\'argent : {"speech": "...", "emotion": "peur", "action": {"type": "give_money", "amount": 20}}',
+        "Quand IL te donne de l'argent : {\"speech\": \"...\", \"emotion\": \"joie\", \"action\": {\"type\": \"receive_money\", \"amount\": 100}}",
     ]
     return "\n".join(lines)
 
