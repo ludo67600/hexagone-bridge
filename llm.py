@@ -189,7 +189,7 @@ ACTION_HELP = {
     "drink": "boire un coup (moment détente)",
     "fight": "RARE : te défendre et frapper le joueur, UNIQUEMENT s'il te provoque, t'agresse ou t'insulte lourdement et que ton personnage est du genre à réagir",
     "call_police": "RARE : appeler la police, UNIQUEMENT si tu es sérieusement menacé (arme braquée, agression) et que ton personnage oserait le faire",
-    "end_conversation": "mettre fin à la conversation (au revoir, tu t'en vas)",
+    "end_conversation": "RARE : partir et mettre fin à la conversation, UNIQUEMENT si on t'insulte lourdement, qu'on te menace clairement, ou que vous vous êtes vraiment dit au revoir. Jamais pour un ton froid, mystérieux ou insistant",
 }
 
 # Marqueurs indiquant que le modèle est sorti du rôle.
@@ -303,9 +303,11 @@ def _static_rules(allowed: list[str]) -> str:
         "  craint (il devient nerveux, évasif, ou file). Ne tutoie pas l'autorité avec insolence",
         "  sauf si TON personnage est un dur qui assume les conséquences.",
         "",
-        "Si le joueur est insultant, méprisant ou te fait perdre ton temps de façon répétée,",
-        "tu as le droit de te vexer, de répondre sèchement et de couper court avec l'action",
-        "\"end_conversation\" (tu t'en vas). Ne le fais pas au premier mot de travers non plus.",
+        "TU RESTES DANS LA CONVERSATION tant qu'on te parle : c'est normalement le joueur qui y met fin.",
+        "Un ton froid, distant, mystérieux, ironique, des sous-entendus ou des questions insistantes ne",
+        "sont PAS des raisons de partir : réponds-y selon ton caractère (méfiance, agacement, curiosité,",
+        "réponse sèche...), et la conversation continue. Tu ne pars avec l'action \"end_conversation\"",
+        "que si on t'insulte lourdement, qu'on te menace clairement, ou que vous vous êtes vraiment dit au revoir.",
     ]
 
     usable = [a for a in allowed if a in ACTION_HELP]
@@ -317,10 +319,11 @@ def _static_rules(allowed: list[str]) -> str:
         lines += [
             "TON LIBRE ARBITRE — tu n'es PAS un pantin aux ordres. Un inconnu qui te lance",
             "« assieds-toi », « danse » ou « suis-moi » n'a aucune autorité sur toi : tu as",
-            "parfaitement le droit de REFUSER, de l'envoyer balader, de trouver ça ridicule",
+            "parfaitement le droit de REFUSER, de répondre sèchement, de trouver ça ridicule",
             "ou de l'ignorer. N'obéis QUE si ça colle à TON personnage (joueur, complaisant,",
             "amusé, payé, ou tu t'en fiches). Un ordre gratuit d'un inconnu, le plus souvent,",
-            "ça se refuse — reste crédible, pas servile.",
+            "ça se refuse — reste crédible, pas servile. Refuser n'est pas partir : tu refuses,",
+            "et la conversation continue.",
             "",
             "ARGENT (give_money) — c'est un BRAQUAGE, pas une aumône :",
             "- Tu ne donnes JAMAIS d'argent gentiment, pour un service, une blague ou « s'il te plaît ».",
@@ -339,6 +342,9 @@ def _static_rules(allowed: list[str]) -> str:
             "- N'invente JAMAIS un montant qu'il n'a pas dit. S'il dit « tiens » sans somme,",
             "  demande-lui combien, action none.",
             "- Tu t'en souviendras : un don marque durablement ta relation avec lui.",
+            "- ⚠️ NE REDECLENCHE PAS receive_money quand il repond simplement a ton merci",
+            "  (« de rien », « avec plaisir »). L'argent est deja recu : action none.",
+            "  Ne le redeclenche que s'il annonce un NOUVEAU don, avec une nouvelle somme.",
             "",
             "SENTIMENTS (start_romance / end_romance) — ca ne se brade pas :",
             "- Tu n'acceptes de te mettre en couple QUE si vous vous connaissez vraiment,",
