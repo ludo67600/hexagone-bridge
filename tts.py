@@ -30,6 +30,12 @@ VOICES_FEMALE = [
 ]
 ALL_VOICES = set(VOICES_MALE + VOICES_FEMALE)
 
+# Voix encore listées par Microsoft mais qui ne renvoient plus de son : remplacées d'office
+# (sinon le PNJ qui l'a tirée reste muet). Eloise : « No audio was received » le 28/10/2026.
+VOIX_REMPLACEES = {
+    "fr-FR-EloiseNeural": "fr-FR-DeniseNeural",
+}
+
 # Bornes de sécurité (cohérentes avec le tirage côté serveur FiveM)
 PITCH_MIN, PITCH_MAX = -15, 15   # Hz
 RATE_MIN, RATE_MAX = -10, 15     # %
@@ -60,10 +66,22 @@ async def synthesize(text: str, voice: str | None = None, pitch: int = 0, rate: 
 
     if not voice or voice not in ALL_VOICES:
         voice = DEFAULT_VOICE
+    voice = VOIX_REMPLACEES.get(voice, voice)
 
     pitch = _clamp(pitch, PITCH_MIN, PITCH_MAX)
     rate = _clamp(rate, RATE_MIN, RATE_MAX)
 
+    audio = await _synthese(text, voice, pitch, rate)
+    if not audio:
+        # Voix en panne chez Microsoft : nouvel essai avec la voix principale du même genre
+        secours = VOICES_FEMALE[0] if voice in VOICES_FEMALE else DEFAULT_VOICE
+        if secours != voice:
+            print(f"[tts] {voice} muette, nouvel essai avec {secours}")
+            audio = await _synthese(text, secours, pitch, rate)
+    return audio
+
+
+async def _synthese(text: str, voice: str, pitch: int, rate: int) -> bytes:
     # edge-tts attend des chaînes signées : "+5Hz", "-3%"
     communicate = edge_tts.Communicate(
         text,
